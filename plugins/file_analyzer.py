@@ -6,7 +6,6 @@ Analyzes various file types for security issues and metadata extraction.
 import logging
 import os
 import hashlib
-import magic
 import zipfile
 import json
 import xml.etree.ElementTree as ET
@@ -14,6 +13,37 @@ from typing import Dict, List, Any, Optional, BinaryIO
 import re
 import time
 from datetime import datetime
+
+# Try to import python-magic, with fallback for Windows
+try:
+    import magic
+except ImportError:
+    try:
+        # For Windows, try python-magic-bin
+        import magic
+    except ImportError:
+        # If still not available, create a simple fallback
+        class MagicFallback:
+            @staticmethod
+            def from_file(file_path, mime=False):
+                """Simple fallback for file type detection"""
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in ['.txt', '.py', '.js', '.html', '.css', '.json', '.xml', '.md']:
+                    return 'text/plain' if mime else 'ASCII text'
+                elif ext in ['.jpg', '.jpeg']:
+                    return 'image/jpeg' if mime else 'JPEG image data'
+                elif ext in ['.png']:
+                    return 'image/png' if mime else 'PNG image data'
+                elif ext in ['.pdf']:
+                    return 'application/pdf' if mime else 'PDF document'
+                elif ext in ['.zip']:
+                    return 'application/zip' if mime else 'Zip archive data'
+                elif ext in ['.exe', '.dll']:
+                    return 'application/x-dosexec' if mime else 'PE32 executable'
+                else:
+                    return 'application/octet-stream' if mime else 'data'
+
+        magic = MagicFallback()
 
 from core.advanced_plugin import AdvancedPlugin, PluginMetadata, PluginCategory
 

@@ -870,11 +870,11 @@ def main():
 
         # Advanced options in an expander
         with st.expander("Advanced Options"):
-            max_depth = st.slider("Crawl Depth", min_value=1, max_value=5, value=2,
-                                help="Maximum depth to crawl from the starting URL")
+            max_depth = st.number_input("Crawl Depth", min_value=1, max_value=5, value=2,
+                                    help="Maximum depth to crawl from the starting URL")
 
-            rate_limit = st.slider("Rate Limit (seconds)", min_value=0.1, max_value=5.0, value=1.0, step=0.1,
-                                 help="Time to wait between requests to avoid overloading the server")
+            rate_limit = st.number_input("Rate Limit (seconds)", min_value=0.1, max_value=5.0, value=1.0, step=0.1,
+                                     help="Time to wait between requests to avoid overloading the server")
 
             download_assets = st.checkbox("Download Assets (CSS, JS, Images)", value=True,
                                        help="Download static assets like CSS, JavaScript, and images")
@@ -1245,8 +1245,8 @@ def main():
             extract_archives = st.checkbox("Extract Archives", value=True,
                                         help="Extract and analyze archive contents")
 
-            max_file_size = st.slider("Maximum File Size (MB)", min_value=1, max_value=500, value=50,
-                                    help="Maximum file size to analyze in MB")
+            max_file_size = st.number_input("Maximum File Size (MB)", min_value=1, max_value=500, value=50,
+                                        help="Maximum file size to analyze in MB")
 
         if uploaded_file is not None:
             # Create a temporary file to analyze
@@ -1403,11 +1403,10 @@ def main():
         # Create tabs for plugin management and execution
         plugin_tab1, plugin_tab2 = st.tabs(["Available Plugins", "Run Plugin"])
 
-        with plugin_tab1:
-            st.subheader("Available Plugins")
+        # Get all available plugins - do this once to share between tabs
+        available_plugins = []
 
-            # Get all available plugins
-            available_plugins = []
+        try:
             for plugin_class_name, plugin_class in plugin_manager.plugin_classes.items():
                 try:
                     plugin_instance = plugin_class()
@@ -1421,6 +1420,12 @@ def main():
                     })
                 except Exception as e:
                     st.warning(f"Error loading plugin {plugin_class_name}: {str(e)}")
+        except Exception as e:
+            st.error(f"Error loading plugins: {str(e)}")
+            available_plugins = []
+
+        with plugin_tab1:
+            st.subheader("Available Plugins")
 
             # Display plugins in a table
             if available_plugins:
@@ -1433,7 +1438,7 @@ def main():
             st.subheader("Run Plugin")
 
             # Plugin selection
-            plugin_options = [p["name"] for p in available_plugins]
+            plugin_options = [p["name"] for p in available_plugins] if available_plugins else []
             if plugin_options:
                 selected_plugin_name = st.selectbox("Select Plugin", plugin_options)
 
@@ -1464,12 +1469,29 @@ def main():
                                     value=schema.get("default", "")
                                 )
                             elif schema["type"] == "number":
-                                config_values[key] = st.slider(
-                                    schema["description"],
-                                    min_value=schema.get("minimum", 0),
-                                    max_value=schema.get("maximum", 100),
-                                    value=schema.get("default", 0)
-                                )
+                                # Use number_input instead of slider to avoid type issues
+                                min_val = schema.get("minimum", 0)
+                                max_val = schema.get("maximum", 100)
+                                default_val = schema.get("default", 0)
+
+                                # Determine if we should use float or int
+                                is_float = isinstance(min_val, float) or isinstance(max_val, float) or isinstance(default_val, float)
+
+                                if is_float:
+                                    config_values[key] = st.number_input(
+                                        schema["description"],
+                                        min_value=float(min_val),
+                                        max_value=float(max_val),
+                                        value=float(default_val),
+                                        step=0.1
+                                    )
+                                else:
+                                    config_values[key] = st.number_input(
+                                        schema["description"],
+                                        min_value=int(min_val),
+                                        max_value=int(max_val),
+                                        value=int(default_val)
+                                    )
                             elif schema["type"] == "boolean":
                                 config_values[key] = st.checkbox(
                                     schema["description"],
