@@ -32,7 +32,7 @@ def create_vulnerability_charts(df):
     with tab1:
         # Pie chart of vulnerabilities by module
         fig_pie = px.pie(values=module_counts.values, names=module_counts.index,
-                        title="ECP Technology")
+                        title="Cyber Wolf")
         st.plotly_chart(fig_pie)
 
         # Histogram of finding types
@@ -188,13 +188,13 @@ def create_downloadable_zip(text_content: str, html_content: str, url: str) -> b
 
 def main():
     st.set_page_config(
-        page_title="ECP Security Tool",
+        page_title="Cyber Wolf",
         page_icon="🕷️",
         layout="wide"
     )
 
     st.title("ECP Security Tool")
-    st.markdown("**The security tool Developed by S. Tamilselvan | Security Researcher**")
+    st.markdown("**The security tool Developed by Cyber Wolf **")
     st.markdown("A modular security analysis framework for bug finding and vulnerability assessment")
 
     # Create tabs for different functionalities
