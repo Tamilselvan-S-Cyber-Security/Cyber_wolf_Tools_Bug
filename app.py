@@ -1227,5 +1227,604 @@ def main():
                 except Exception as e:
                     st.error(f"Error analyzing APK: {str(e)}")
 
+    with tab4:
+        st.header("File Analysis")
+        st.markdown("Upload files for security analysis and vulnerability detection")
+
+        # File uploader
+        uploaded_file = st.file_uploader("Choose a file for analysis", type=None, accept_multiple_files=False)
+
+        # Advanced options in an expander
+        with st.expander("Analysis Options"):
+            analyze_metadata = st.checkbox("Analyze Metadata", value=True,
+                                        help="Extract and analyze file metadata")
+
+            analyze_code = st.checkbox("Analyze Code", value=True,
+                                    help="Perform code analysis for security issues")
+
+            extract_archives = st.checkbox("Extract Archives", value=True,
+                                        help="Extract and analyze archive contents")
+
+            max_file_size = st.slider("Maximum File Size (MB)", min_value=1, max_value=500, value=50,
+                                    help="Maximum file size to analyze in MB")
+
+        if uploaded_file is not None:
+            # Create a temporary file to analyze
+            with st.spinner("Analyzing file..."):
+                try:
+                    # Save uploaded file to a temporary location
+                    import tempfile
+                    import os
+
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                        tmp_file.write(uploaded_file.getvalue())
+                        temp_file_path = tmp_file.name
+
+                    # Initialize advanced plugin manager
+                    plugin_manager = AdvancedPluginManager()
+
+                    # Load the FileAnalyzer plugin
+                    file_analyzer = None
+                    for plugin_class_name in plugin_manager.plugin_classes:
+                        if "FileAnalyzer" in plugin_class_name:
+                            file_analyzer = plugin_manager.load_plugin(plugin_class_name)
+                            break
+
+                    if file_analyzer:
+                        # Configure the plugin
+                        file_analyzer.configure({
+                            "analyze_metadata": analyze_metadata,
+                            "analyze_code": analyze_code,
+                            "extract_archives": extract_archives,
+                            "max_file_size": max_file_size
+                        })
+
+                        # Run the analysis
+                        results = file_analyzer.execute(temp_file_path)
+
+                        # Display results
+                        st.success(f"Analysis of {uploaded_file.name} completed!")
+
+                        # Display file information
+                        st.subheader("File Information")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("File Name", results["file_name"])
+                        with col2:
+                            file_size_kb = results["file_size"] / 1024
+                            file_size_mb = file_size_kb / 1024
+                            size_str = f"{file_size_kb:.2f} KB" if file_size_mb < 1 else f"{file_size_mb:.2f} MB"
+                            st.metric("File Size", size_str)
+                        with col3:
+                            st.metric("File Type", results["file_type"])
+
+                        # Display file hashes
+                        st.subheader("File Hashes")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.code(f"MD5: {results['hashes']['md5']}")
+                            st.code(f"SHA1: {results['hashes']['sha1']}")
+                        with col2:
+                            st.code(f"SHA256: {results['hashes']['sha256']}")
+
+                        # Display metadata if available
+                        if results["metadata"] and analyze_metadata:
+                            st.subheader("Metadata")
+                            metadata_df = pd.DataFrame([
+                                {"Key": key, "Value": value}
+                                for key, value in results["metadata"].items()
+                            ])
+                            st.dataframe(metadata_df)
+
+                        # Display security issues if found
+                        if results["security_issues"]:
+                            st.subheader("Security Issues")
+                            for issue in results["security_issues"]:
+                                severity_color = {
+                                    "High": "red",
+                                    "Medium": "orange",
+                                    "Low": "green"
+                                }.get(issue["severity"], "blue")
+
+                                with st.expander(f"{issue['type']} - :{severity_color}[{issue['severity']}]"):
+                                    st.markdown(f"**Description:** {issue['description']}")
+                                    if "line_number" in issue:
+                                        st.markdown(f"**Line:** {issue['line_number']}")
+                                    if "code" in issue:
+                                        st.code(issue["code"])
+                        else:
+                            st.success("No security issues found")
+
+                        # Display extracted files if available
+                        if results["extracted_files"] and extract_archives:
+                            st.subheader("Extracted Files")
+                            extracted_df = pd.DataFrame([
+                                {
+                                    "File Name": os.path.basename(file["path"]),
+                                    "File Type": file["type"],
+                                    "Size": f"{file['size']/1024:.2f} KB" if file['size'] < 1024*1024 else f"{file['size']/(1024*1024):.2f} MB"
+                                }
+                                for file in results["extracted_files"]
+                            ])
+                            st.dataframe(extracted_df)
+
+                        # Export options
+                        st.subheader("Export Results")
+                        col1, col2, col3 = st.columns(3)
+
+                        # JSON export
+                        with col1:
+                            json_results = json.dumps(results, default=datetime_handler, indent=2)
+                            st.download_button(
+                                label="Download JSON Report",
+                                data=json_results,
+                                file_name=f"file_analysis_{results['file_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                mime="application/json"
+                            )
+
+                        # HTML export
+                        with col2:
+                            # Generate HTML report
+                            html_report = generate_file_analysis_html_report(results)
+                            st.download_button(
+                                label="Download HTML Report",
+                                data=html_report,
+                                file_name=f"file_analysis_{results['file_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                                mime="text/html"
+                            )
+
+                        # PDF export (via HTML with print functionality)
+                        with col3:
+                            pdf_html = generate_pdf_from_html(generate_file_analysis_html_report(results))
+                            st.download_button(
+                                label="Download PDF Report",
+                                data=pdf_html,
+                                file_name=f"file_analysis_{results['file_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_pdf.html",
+                                mime="text/html"
+                            )
+                    else:
+                        st.error("File Analyzer plugin not found")
+
+                    # Clean up the temporary file
+                    os.unlink(temp_file_path)
+
+                except Exception as e:
+                    st.error(f"Error analyzing file: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
+    with tab5:
+        st.header("Advanced Plugins")
+        st.markdown("Manage and run advanced security analysis plugins")
+
+        # Initialize advanced plugin manager
+        plugin_manager = AdvancedPluginManager()
+
+        # Create tabs for plugin management and execution
+        plugin_tab1, plugin_tab2 = st.tabs(["Available Plugins", "Run Plugin"])
+
+        with plugin_tab1:
+            st.subheader("Available Plugins")
+
+            # Get all available plugins
+            available_plugins = []
+            for plugin_class_name, plugin_class in plugin_manager.plugin_classes.items():
+                try:
+                    plugin_instance = plugin_class()
+                    available_plugins.append({
+                        "name": plugin_instance.name,
+                        "description": plugin_instance.metadata.description,
+                        "version": plugin_instance.metadata.version,
+                        "author": plugin_instance.metadata.author,
+                        "category": plugin_instance.metadata.category.name,
+                        "class_name": plugin_class_name
+                    })
+                except Exception as e:
+                    st.warning(f"Error loading plugin {plugin_class_name}: {str(e)}")
+
+            # Display plugins in a table
+            if available_plugins:
+                plugins_df = pd.DataFrame(available_plugins)
+                st.dataframe(plugins_df)
+            else:
+                st.info("No plugins available")
+
+        with plugin_tab2:
+            st.subheader("Run Plugin")
+
+            # Plugin selection
+            plugin_options = [p["name"] for p in available_plugins]
+            if plugin_options:
+                selected_plugin_name = st.selectbox("Select Plugin", plugin_options)
+
+                # Get the selected plugin details
+                selected_plugin = next((p for p in available_plugins if p["name"] == selected_plugin_name), None)
+
+                if selected_plugin:
+                    st.markdown(f"**Description:** {selected_plugin['description']}")
+                    st.markdown(f"**Version:** {selected_plugin['version']}")
+                    st.markdown(f"**Author:** {selected_plugin['author']}")
+                    st.markdown(f"**Category:** {selected_plugin['category']}")
+
+                    # Load the plugin
+                    plugin = plugin_manager.load_plugin(selected_plugin["class_name"])
+
+                    if plugin:
+                        # Get plugin configuration schema
+                        config_schema = plugin.metadata.config_schema
+
+                        # Create configuration inputs
+                        st.subheader("Plugin Configuration")
+                        config_values = {}
+
+                        for key, schema in config_schema.items():
+                            if schema["type"] == "string":
+                                config_values[key] = st.text_input(
+                                    schema["description"],
+                                    value=schema.get("default", "")
+                                )
+                            elif schema["type"] == "number":
+                                config_values[key] = st.slider(
+                                    schema["description"],
+                                    min_value=schema.get("minimum", 0),
+                                    max_value=schema.get("maximum", 100),
+                                    value=schema.get("default", 0)
+                                )
+                            elif schema["type"] == "boolean":
+                                config_values[key] = st.checkbox(
+                                    schema["description"],
+                                    value=schema.get("default", False)
+                                )
+
+                        # Target input
+                        st.subheader("Target")
+                        target_type = st.radio("Target Type", ["URL/Domain", "File Upload", "Text Input"])
+
+                        target = None
+                        if target_type == "URL/Domain":
+                            target = st.text_input("Enter URL or domain")
+                        elif target_type == "File Upload":
+                            uploaded_file = st.file_uploader("Upload target file")
+                            if uploaded_file:
+                                # Save to temporary file
+                                import tempfile
+                                import os
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                                    tmp_file.write(uploaded_file.getvalue())
+                                    target = tmp_file.name
+                        else:  # Text Input
+                            target = st.text_area("Enter text to analyze")
+
+                        # Run button
+                        if st.button("Run Plugin") and target:
+                            with st.spinner(f"Running {selected_plugin_name}..."):
+                                try:
+                                    # Configure the plugin
+                                    plugin.configure(config_values)
+
+                                    # Run the plugin
+                                    results = plugin.execute(target)
+
+                                    # Display results
+                                    st.success(f"Plugin {selected_plugin_name} executed successfully!")
+
+                                    # Display results in JSON format
+                                    st.subheader("Results")
+                                    st.json(results)
+
+                                    # Export options
+                                    st.subheader("Export Results")
+                                    col1, col2 = st.columns(2)
+
+                                    # JSON export
+                                    with col1:
+                                        json_results = json.dumps(results, default=datetime_handler, indent=2)
+                                        st.download_button(
+                                            label="Download JSON Report",
+                                            data=json_results,
+                                            file_name=f"{selected_plugin_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                            mime="application/json"
+                                        )
+
+                                    # HTML export
+                                    with col2:
+                                        # Generate a simple HTML report
+                                        html_report = f"""
+                                        <!DOCTYPE html>
+                                        <html>
+                                        <head>
+                                            <title>{selected_plugin_name} Report</title>
+                                            <style>
+                                                body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                                                h1 {{ color: #2c3e50; }}
+                                                pre {{ background-color: #f8f9fa; padding: 10px; border-radius: 5px; }}
+                                            </style>
+                                        </head>
+                                        <body>
+                                            <h1>{selected_plugin_name} Report</h1>
+                                            <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                                            <h2>Results</h2>
+                                            <pre>{json.dumps(results, default=datetime_handler, indent=2)}</pre>
+                                        </body>
+                                        </html>
+                                        """
+
+                                        st.download_button(
+                                            label="Download HTML Report",
+                                            data=html_report,
+                                            file_name=f"{selected_plugin_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                                            mime="text/html"
+                                        )
+
+                                    # Clean up temporary file if needed
+                                    if target_type == "File Upload" and target:
+                                        try:
+                                            os.unlink(target)
+                                        except:
+                                            pass
+
+                                except Exception as e:
+                                    st.error(f"Error running plugin: {str(e)}")
+                                    import traceback
+                                    st.code(traceback.format_exc())
+                    else:
+                        st.error(f"Failed to load plugin {selected_plugin_name}")
+            else:
+                st.info("No plugins available to run")
+
+def generate_file_analysis_html_report(results: dict) -> str:
+    """Generate an HTML report for file analysis results"""
+    # HTML template for the report
+    html_template = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>File Analysis Report - {{ results.file_name }}</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                margin: 0;
+                padding: 20px;
+                color: #333;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            h1, h2, h3 {
+                color: #2c3e50;
+            }
+            .header {
+                background-color: #3498db;
+                color: white;
+                padding: 20px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }
+            .section {
+                background-color: #f9f9f9;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-radius: 5px;
+                border-left: 5px solid #3498db;
+            }
+            .info-box {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 20px;
+                margin-bottom: 20px;
+            }
+            .info-item {
+                background-color: #ecf0f1;
+                padding: 15px;
+                border-radius: 5px;
+                flex: 1;
+                min-width: 200px;
+            }
+            .vulnerability {
+                background-color: #fff;
+                padding: 15px;
+                margin-bottom: 10px;
+                border-radius: 5px;
+                border-left: 5px solid #e74c3c;
+            }
+            .high {
+                border-left-color: #e74c3c;
+            }
+            .medium {
+                border-left-color: #f39c12;
+            }
+            .low {
+                border-left-color: #2ecc71;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }
+            th, td {
+                padding: 12px 15px;
+                text-align: left;
+                border-bottom: 1px solid #ddd;
+            }
+            th {
+                background-color: #3498db;
+                color: white;
+            }
+            tr:nth-child(even) {
+                background-color: #f2f2f2;
+            }
+            .file-list {
+                max-height: 300px;
+                overflow-y: auto;
+                background-color: #f8f9fa;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #eee;
+                color: #7f8c8d;
+            }
+            pre {
+                background-color: #f8f9fa;
+                padding: 10px;
+                border-radius: 5px;
+                overflow-x: auto;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>File Analysis Report</h1>
+                <p>Generated on {{ timestamp }}</p>
+            </div>
+
+            <div class="section">
+                <h2>File Information</h2>
+                <div class="info-box">
+                    <div class="info-item">
+                        <h3>File Name</h3>
+                        <p>{{ results.file_name }}</p>
+                    </div>
+                    <div class="info-item">
+                        <h3>File Type</h3>
+                        <p>{{ results.file_type }}</p>
+                    </div>
+                    <div class="info-item">
+                        <h3>File Size</h3>
+                        <p>
+                            {% if results.file_size < 1024*1024 %}
+                                {{ (results.file_size/1024)|round(1) }} KB
+                            {% else %}
+                                {{ (results.file_size/(1024*1024))|round(1) }} MB
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>File Hashes</h2>
+                <div class="info-box">
+                    <div class="info-item">
+                        <h3>MD5</h3>
+                        <p>{{ results.hashes.md5 }}</p>
+                    </div>
+                    <div class="info-item">
+                        <h3>SHA1</h3>
+                        <p>{{ results.hashes.sha1 }}</p>
+                    </div>
+                    <div class="info-item">
+                        <h3>SHA256</h3>
+                        <p>{{ results.hashes.sha256 }}</p>
+                    </div>
+                </div>
+            </div>
+
+            {% if results.metadata %}
+            <div class="section">
+                <h2>Metadata</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Key</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for key, value in results.metadata.items() %}
+                        <tr>
+                            <td>{{ key }}</td>
+                            <td>{{ value }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {% if results.security_issues %}
+            <div class="section">
+                <h2>Security Issues</h2>
+                <h3>Total Issues: {{ results.security_issues|length }}</h3>
+
+                {% for issue in results.security_issues %}
+                <div class="vulnerability {{ issue.severity|lower }}">
+                    <h3>{{ issue.type }} ({{ issue.severity }})</h3>
+                    <p><strong>Description:</strong> {{ issue.description }}</p>
+
+                    {% if issue.line_number %}
+                    <p><strong>Line:</strong> {{ issue.line_number }}</p>
+                    {% endif %}
+
+                    {% if issue.code %}
+                    <h4>Code:</h4>
+                    <pre>{{ issue.code }}</pre>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if results.extracted_files %}
+            <div class="section">
+                <h2>Extracted Files</h2>
+                <p>Total Files: {{ results.extracted_files|length }}</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for file in results.extracted_files %}
+                        <tr>
+                            <td>{{ file.path.split('/')[-1] }}</td>
+                            <td>{{ file.type }}</td>
+                            <td>
+                                {% if file.size < 1024*1024 %}
+                                    {{ (file.size/1024)|round(1) }} KB
+                                {% else %}
+                                    {{ (file.size/(1024*1024))|round(1) }} MB
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            <div class="footer">
+                <p>Generated by CyberWolfScanner File Analyzer</p>
+                <p>© {{ current_year }} CyberWolfScanner</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    # Create a Jinja2 template
+    template = Template(html_template)
+
+    # Render the template with the results
+    html_report = template.render(
+        results=results,
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        current_year=datetime.now().year
+    )
+
+    return html_report
+
 if __name__ == "__main__":
     main()

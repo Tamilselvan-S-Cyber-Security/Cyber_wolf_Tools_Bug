@@ -14,6 +14,7 @@ dependencies = [
     "plotly>=6.0.0",
     "pycryptodome>=3.21.0",
     "pygments>=2.19.1",
+    "python-magic>=0.4.27",
     "python-whois>=0.9.5",
     "requests>=2.32.3",
     "rich>=13.9.4",
