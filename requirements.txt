@@ -14,3 +14,4 @@ rich>=13.7.1  # Adjust if necessary
 streamlit>=1.30.0  # Adjust to latest stable version
 trafilatura>=1.6.0  # Adjust if 2.0.0 is unavailable
 urllib3>=2.2.0  # Adjust to available version
+androguard
